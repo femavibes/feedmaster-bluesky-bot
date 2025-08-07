@@ -37,7 +37,8 @@ Automatically posts achievement notifications to Bluesky when users earn achieve
 - `MESSAGE_TEMPLATE`: Custom message format (see below)
 
 ### Message Template Variables
-- `{username}`: User's handle
+- `{username}`: User's handle (e.g., alice.bsky.social)
+- `{display_name}`: User's display name (e.g., Alice Smith)
 - `{achievement}`: Achievement name
 - `{rarity}`: Rarity tier (Diamond, Legendary, etc.)
 - `{percentage}`: Rarity percentage
@@ -59,7 +60,7 @@ Automatically posts achievement notifications to Bluesky when users earn achieve
 
 The bot will post messages like:
 ```
-🎉 Congratulations @alice.bsky.social on earning "Power Poster II"! 
+🎉 Congratulations Alice Smith on earning "Power Poster II"! 
 Only 0.06% of users have achieved this Mythic rarity! 
 Track your achievements at feedmaster.fema.monster
 

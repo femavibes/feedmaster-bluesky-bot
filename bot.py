@@ -38,7 +38,7 @@ class FeedmasterBlueskyBot:
         self.max_posts_per_hour = int(os.getenv('MAX_POSTS_PER_HOUR', '10'))
         self.message_template = os.getenv(
             'MESSAGE_TEMPLATE',
-            '🎉 Congratulations @{username} on earning "{achievement}"! Only {percentage}% of users have achieved this {rarity} rarity! Track your achievements at feedmaster.fema.monster'
+            '🎉 Congratulations {display_name} on earning "{achievement}"! Only {percentage}% of users have achieved this {rarity} rarity! Track your achievements at feedmaster.fema.monster'
         )
         
         # Validate configuration
@@ -120,6 +120,7 @@ class FeedmasterBlueskyBot:
     def format_message(self, achievement: Dict) -> str:
         """Format the Bluesky post message"""
         username = achievement.get('user_handle', 'unknown')
+        display_name = achievement.get('user_display_name') or username
         achievement_name = achievement.get('achievement_name', 'Unknown Achievement')
         rarity_tier = achievement.get('rarity_tier', 'Bronze')
         rarity_percentage = achievement.get('rarity_percentage', 0)
@@ -127,6 +128,7 @@ class FeedmasterBlueskyBot:
         # Format the message
         message = self.message_template.format(
             username=username,
+            display_name=display_name,
             achievement=achievement_name,
             rarity=rarity_tier,
             percentage=f"{rarity_percentage:.2f}"
