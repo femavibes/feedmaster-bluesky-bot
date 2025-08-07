@@ -111,7 +111,13 @@ class FeedmasterBlueskyBot:
     
     def should_post_achievement(self, achievement: Dict) -> bool:
         """Check if achievement meets posting criteria"""
-        rarity_tier = achievement.get('rarity_tier', 'Bronze')
+        rarity_tier = achievement.get('rarity_tier')
+        
+        # Skip achievements with null/missing rarity (not yet calculated)
+        if not rarity_tier:
+            logger.warning(f"Skipping achievement {achievement.get('achievement_name')} - rarity not calculated yet")
+            return False
+            
         min_rarity_level = self.rarity_order.get(self.min_rarity_tier, 0)
         achievement_rarity_level = self.rarity_order.get(rarity_tier, 0)
         
