@@ -27,7 +27,7 @@ Automatically posts achievement notifications to Bluesky when users earn achieve
 
 ### Required Settings
 - `FEED_IDS`: Which feeds to monitor for achievements
-- `BLUESKY_USERNAME`: Bot account username (e.g., `musicfeed.bsky.social`)
+- `BLUESKY_USERNAME`: Bot account username (e.g., `musicfeed.bsky.social`) OR `BLUESKY_DID`: Account DID as fallback
 - `BLUESKY_APP_PASSWORD`: Generate this in Bluesky Settings → App Passwords
 
 ### Optional Settings

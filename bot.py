@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import httpx
 from atproto import Client
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +31,7 @@ class FeedmasterBlueskyBot:
         self.feedmaster_api_url = os.getenv('FEEDMASTER_API_URL', 'https://feedmaster.fema.monster')
         self.feed_ids = os.getenv('FEED_IDS', '').split(',')
         self.bluesky_username = os.getenv('BLUESKY_USERNAME')
+        self.bluesky_did = os.getenv('BLUESKY_DID')  # Optional DID fallback
         self.bluesky_app_password = os.getenv('BLUESKY_APP_PASSWORD')
         self.min_rarity_tier = os.getenv('MIN_RARITY_TIER', 'Bronze')
         self.poll_interval_minutes = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
@@ -37,8 +42,8 @@ class FeedmasterBlueskyBot:
         )
         
         # Validate configuration
-        if not self.bluesky_username or not self.bluesky_app_password:
-            raise ValueError("BLUESKY_USERNAME and BLUESKY_APP_PASSWORD are required")
+        if (not self.bluesky_username and not self.bluesky_did) or not self.bluesky_app_password:
+            raise ValueError("BLUESKY_USERNAME (or BLUESKY_DID) and BLUESKY_APP_PASSWORD are required")
         
         if not self.feed_ids or self.feed_ids == ['']:
             raise ValueError("FEED_IDS is required")
@@ -72,8 +77,10 @@ class FeedmasterBlueskyBot:
         """Authenticate with Bluesky"""
         try:
             self.bluesky_client = Client()
-            self.bluesky_client.login(self.bluesky_username, self.bluesky_app_password)
-            logger.info(f"Successfully authenticated with Bluesky as {self.bluesky_username}")
+            # Try username first, then DID as fallback
+            login_identifier = self.bluesky_username or self.bluesky_did
+            self.bluesky_client.login(login_identifier, self.bluesky_app_password)
+            logger.info(f"Successfully authenticated with Bluesky as {login_identifier}")
         except Exception as e:
             logger.error(f"Failed to authenticate with Bluesky: {e}")
             raise
