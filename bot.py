@@ -12,8 +12,11 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import httpx
-from atproto import Client
+from atproto import Client, models
+from atproto.exceptions import AtProtocolError
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+import re
 
 # Load environment variables
 load_dotenv()
@@ -96,8 +99,12 @@ class FeedmasterBlueskyBot:
                 'limit': 50
             }
             
-            async with httpx.AsyncClient() as client:
+            logger.info(f"Fetching achievements from: {url}")
+            logger.info(f"Params: {params}")
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, params=params)
+                logger.info(f"API Response status: {response.status_code}")
                 response.raise_for_status()
                 data = response.json()
                 
@@ -107,6 +114,9 @@ class FeedmasterBlueskyBot:
                 
         except Exception as e:
             logger.error(f"Failed to fetch achievements: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return []
     
     def should_post_achievement(self, achievement: Dict) -> bool:
@@ -123,15 +133,15 @@ class FeedmasterBlueskyBot:
         
         return achievement_rarity_level >= min_rarity_level
     
-    def format_message(self, achievement: Dict) -> str:
-        """Format the Bluesky post message"""
+    def format_message(self, achievement: Dict) -> tuple[str, Optional[str]]:
+        """Format the Bluesky post message and return message + share_url"""
         username = achievement.get('user_handle', 'unknown')
         display_name = achievement.get('user_display_name') or username
         achievement_name = achievement.get('achievement_name', 'Unknown Achievement')
         rarity_tier = achievement.get('rarity_tier', 'Bronze')
         rarity_percentage = achievement.get('rarity_percentage', 0)
         
-        # Format the message
+        # Format the message (without URL - it will be in the link card)
         message = self.message_template.format(
             username=username,
             display_name=display_name,
@@ -140,15 +150,82 @@ class FeedmasterBlueskyBot:
             percentage=f"{rarity_percentage:.2f}"
         )
         
-        # Add share URL
-        share_url = achievement.get('share_url', '')
-        if share_url:
-            message += f"\n\n{share_url}"
+        # Remove the URL from template if it exists
+        message = re.sub(r'\s*feedmaster\.fema\.monster\s*', '', message)
         
-        return message
+        share_url = achievement.get('share_url')
+        return message, share_url
     
-    async def post_to_bluesky(self, message: str) -> bool:
-        """Post message to Bluesky"""
+    async def fetch_url_metadata(self, url: str) -> Optional[Dict]:
+        """Fetch metadata for URL to create link card"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                response = await client.get(url, headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; FeedmasterBot/1.0)'
+                })
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Extract metadata
+                title = None
+                description = None
+                image_url = None
+                
+                # Try Open Graph tags first
+                og_title = soup.find('meta', property='og:title')
+                if og_title:
+                    title = og_title.get('content')
+                
+                og_description = soup.find('meta', property='og:description')
+                if og_description:
+                    description = og_description.get('content')
+                
+                og_image = soup.find('meta', property='og:image')
+                if og_image:
+                    image_url = og_image.get('content')
+                
+                # Fallback to standard meta tags
+                if not title:
+                    title_tag = soup.find('title')
+                    if title_tag:
+                        title = title_tag.get_text().strip()
+                
+                if not description:
+                    desc_tag = soup.find('meta', attrs={'name': 'description'})
+                    if desc_tag:
+                        description = desc_tag.get('content')
+                
+                # Ensure we have at least a title
+                if not title:
+                    title = url
+                
+                # Download and upload image to Bluesky if available
+                image_blob = None
+                if image_url:
+                    try:
+                        img_response = await client.get(image_url)
+                        img_response.raise_for_status()
+                        
+                        # Upload image to Bluesky
+                        image_blob = self.bluesky_client.upload_blob(img_response.content)
+                        logger.info(f"Uploaded image blob for {url}")
+                    except Exception as e:
+                        logger.warning(f"Failed to upload image for {url}: {e}")
+                
+                return {
+                    'title': title[:300] if title else url,
+                    'description': description[:300] if description else '',
+                    'image_blob': image_blob,
+                    'url': url
+                }
+                
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata for {url}: {e}")
+            return None
+    
+    async def post_to_bluesky(self, message: str, share_url: Optional[str] = None) -> bool:
+        """Post message to Bluesky with optional link card"""
         try:
             # Check rate limiting
             now = datetime.now()
@@ -160,8 +237,31 @@ class FeedmasterBlueskyBot:
                 logger.warning(f"Rate limit reached ({self.max_posts_per_hour} posts/hour). Skipping post.")
                 return False
             
+            # Create post with optional embed
+            embed = None
+            if share_url:
+                metadata = await self.fetch_url_metadata(share_url)
+                if metadata:
+                    # Create external embed for link card
+                    external = models.AppBskyEmbedExternal.External(
+                        uri=metadata['url'],
+                        title=metadata['title'],
+                        description=metadata['description']
+                    )
+                    
+                    # Add image if available
+                    if metadata.get('image_blob'):
+                        external.thumb = metadata['image_blob']
+                    
+                    embed = models.AppBskyEmbedExternal.Main(external=external)
+                    logger.info(f"Created link card for: {metadata['title']}")
+            
             # Post to Bluesky
-            self.bluesky_client.send_post(text=message)
+            if embed:
+                self.bluesky_client.send_post(text=message, embed=embed)
+            else:
+                self.bluesky_client.send_post(text=message)
+            
             self.posts_this_hour += 1
             
             logger.info(f"Successfully posted to Bluesky ({self.posts_this_hour}/{self.max_posts_per_hour} this hour)")
@@ -178,11 +278,11 @@ class FeedmasterBlueskyBot:
         posted_count = 0
         for achievement in achievements:
             if self.should_post_achievement(achievement):
-                message = self.format_message(achievement)
+                message, share_url = self.format_message(achievement)
                 
                 logger.info(f"Posting achievement: {achievement['user_handle']} - {achievement['achievement_name']}")
                 
-                if await self.post_to_bluesky(message):
+                if await self.post_to_bluesky(message, share_url):
                     posted_count += 1
                     # Small delay between posts
                     await asyncio.sleep(2)

@@ -2,3 +2,4 @@ atproto>=0.0.54
 httpx>=0.25.0
 asyncio-throttle>=1.0.0
 python-dotenv>=1.0.0
+beautifulsoup4>=4.12.0
