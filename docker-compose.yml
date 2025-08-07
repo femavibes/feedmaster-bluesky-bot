@@ -11,6 +11,7 @@ services:
       
       # Bluesky credentials
       BLUESKY_USERNAME: ${BLUESKY_USERNAME}
+      BLUESKY_DID: ${BLUESKY_DID}
       BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD}
       
       # Bot settings
