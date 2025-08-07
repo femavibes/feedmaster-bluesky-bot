@@ -41,7 +41,7 @@ class FeedmasterBlueskyBot:
         self.max_posts_per_hour = int(os.getenv('MAX_POSTS_PER_HOUR', '10'))
         self.message_template = os.getenv(
             'MESSAGE_TEMPLATE',
-            '🎉 Congratulations {display_name} on earning "{achievement}"! Only {percentage}% of users have achieved this {rarity} rarity! Track your achievements at feedmaster.fema.monster'
+            '🎉 Congratulations {display_name} on earning "{achievement}"! Only {percentage}% of users have achieved this {rarity} rarity!'
         )
         
         # Validate configuration
@@ -208,7 +208,9 @@ class FeedmasterBlueskyBot:
                         img_response.raise_for_status()
                         
                         # Upload image to Bluesky
-                        image_blob = self.bluesky_client.upload_blob(img_response.content)
+                        upload_result = self.bluesky_client.upload_blob(img_response.content)
+                        # Extract blob reference from upload result
+                        image_blob = upload_result.blob if hasattr(upload_result, 'blob') else upload_result
                         logger.info(f"Uploaded image blob for {url}")
                     except Exception as e:
                         logger.warning(f"Failed to upload image for {url}: {e}")
@@ -299,9 +301,14 @@ class FeedmasterBlueskyBot:
                 datetime.fromisoformat(a['earned_at'].replace('Z', '+00:00')) 
                 for a in achievements
             )
+            # Ensure both datetimes are timezone-aware
+            if self.last_check.tzinfo is None:
+                from datetime import timezone
+                self.last_check = self.last_check.replace(tzinfo=timezone.utc)
             self.last_check = max(self.last_check, latest_time)
         else:
-            self.last_check = datetime.now()
+            from datetime import timezone
+            self.last_check = datetime.now(timezone.utc)
     
     async def run(self):
         """Main bot loop"""
