@@ -478,7 +478,7 @@ class FeedmasterBlueskyBot:
                     image_blob = upload_result.blob if hasattr(upload_result, 'blob') else upload_result
                     
                     # Create external embed with achievement card
-                    if share_url:
+                    if share_url and share_url.startswith(('http://', 'https://')):
                         external = models.AppBskyEmbedExternal.External(
                             uri=share_url,
                             title=f"{achievement.get('achievement_name', 'Achievement Unlocked')}",
@@ -486,16 +486,16 @@ class FeedmasterBlueskyBot:
                             thumb=image_blob
                         )
                         embed = models.AppBskyEmbedExternal.Main(external=external)
-                        logger.info(f"Created achievement card link card")
+                        logger.info(f"Created achievement card link card with URL: {share_url}")
                     else:
-                        # If no share URL, just post the image
+                        # If no valid share URL, just post the image
                         embed = models.AppBskyEmbedImages.Main(
                             images=[models.AppBskyEmbedImages.Image(
                                 alt="Achievement card",
                                 image=image_blob
                             )]
                         )
-                        logger.info(f"Created achievement card image embed")
+                        logger.info(f"Created achievement card image embed (no valid URL: {share_url})")
                         
                 except Exception as e:
                     logger.error(f"Failed to upload achievement card: {e}")
