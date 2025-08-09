@@ -8,6 +8,7 @@ Access via http://localhost:8080
 
 import os
 import subprocess
+import json
 from flask import Flask, render_template_string, request, redirect, flash, jsonify
 from dotenv import load_dotenv, set_key
 import logging
@@ -91,6 +92,14 @@ CONFIG_TEMPLATE = """
 </head>
 <body>
     <h1>🤖 Feedmaster Bluesky Bot Configuration</h1>
+    
+    <div class="section" style="margin-bottom: 20px;">
+        <h2>🔍 Bot Status</h2>
+        <div id="botStatus" style="padding: 10px; border-radius: 4px; background: #f8f9fa;">
+            <span style="color: #6c757d;">Checking bot status...</span>
+        </div>
+        <button type="button" id="refreshStatusBtn" onclick="checkBotStatus()" style="margin-top: 10px; display: none;">🔄 Refresh Status</button>
+    </div>
 
     {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -118,7 +127,7 @@ CONFIG_TEMPLATE = """
         <div class="section">
             <h2>📱 Platform Configuration</h2>
             <div class="alert" style="background: #e7f3ff; color: #0c5460; border: 1px solid #b8daff; margin-bottom: 15px;">
-                <strong>Note:</strong> Configure at least one platform (Bluesky or Discord). You can use both simultaneously.
+                <strong>🚀 Multi-Platform Support:</strong> Configure Bluesky, Discord, or both! The bot will post to all configured platforms simultaneously.
             </div>
             
             <h3>🦋 Bluesky Account (Optional)</h3>
@@ -139,10 +148,29 @@ CONFIG_TEMPLATE = """
             </div>
             
             <h3>💬 Discord Webhook (Optional)</h3>
+            <div class="alert" style="background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; margin-bottom: 15px;">
+                <strong>📋 How to set up Discord webhook:</strong><br>
+                1. Go to your Discord server<br>
+                2. Right-click the channel where you want bot posts<br>
+                3. Select "Edit Channel" → "Integrations" → "Webhooks"<br>
+                4. Click "New Webhook" or "Create Webhook"<br>
+                5. Give it a name like "Feedmaster Bot"<br>
+                6. Copy the "Webhook URL" and paste it below<br>
+                <em>The bot will post rich embeds with achievement cards and user avatars</em>
+            </div>
             <div class="form-group">
                 <label for="DISCORD_WEBHOOK_URL">Discord Webhook URL:</label>
-                <input type="url" name="DISCORD_WEBHOOK_URL" value="{{ config.DISCORD_WEBHOOK_URL }}" placeholder="https://discord.com/api/webhooks/...">
-                <div class="help">Get this from Discord Server Settings > Integrations > Webhooks</div>
+                <input type="url" name="DISCORD_WEBHOOK_URL" value="{{ config.DISCORD_WEBHOOK_URL }}" placeholder="https://discord.com/api/webhooks/1234567890/abcdef...">
+                <div class="help">Paste the webhook URL from Discord here. Posts will include rich embeds with achievement images.</div>
+                {% if config.DISCORD_WEBHOOK_URL %}
+                    <div style="background: #d4edda; color: #155724; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.9em;">
+                        ✅ <strong>Discord webhook configured:</strong> ...{{ config.DISCORD_WEBHOOK_URL[-20:] }}
+                    </div>
+                {% else %}
+                    <div style="background: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.9em;">
+                        ❌ <strong>No Discord webhook configured</strong>
+                    </div>
+                {% endif %}
             </div>
         </div>
 
@@ -209,14 +237,15 @@ CONFIG_TEMPLATE = """
             </div>
         </div>
 
-        <button type="submit">💾 Save Configuration</button>
+        <button type="submit" style="background: #28a745;">💾 Save Configuration</button>
         <button type="button" onclick="restartBot()">🔄 Restart Bot</button>
         <button type="button" onclick="viewLogs()">📋 View Logs</button>
     </form>
 
     <div id="logs" style="display:none; margin-top: 20px;">
-        <h3>📋 Bot Logs</h3>
-        <pre id="logContent" style="background: #f5f5f5; padding: 15px; border-radius: 4px; max-height: 400px; overflow-y: auto;"></pre>
+        <h3>📋 Bot Logs (Last 100 lines)</h3>
+        <pre id="logContent" style="background: #f5f5f5; padding: 15px; border-radius: 4px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;"></pre>
+        <button type="button" onclick="refreshLogs()" style="margin-top: 10px;">🔄 Refresh Logs</button>
     </div>
 
     <script>
@@ -269,19 +298,55 @@ CONFIG_TEMPLATE = """
         function viewLogs() {
             const logsDiv = document.getElementById('logs');
             if (logsDiv.style.display === 'none') {
-                fetch('/logs')
-                    .then(response => response.text())
-                    .then(data => {
-                        document.getElementById('logContent').textContent = data;
-                        logsDiv.style.display = 'block';
-                    });
+                refreshLogs();
+                logsDiv.style.display = 'block';
             } else {
                 logsDiv.style.display = 'none';
             }
         }
         
-        // Update behavior preview on page load
-        document.addEventListener('DOMContentLoaded', updateBotBehavior);
+        function refreshLogs() {
+            fetch('/logs')
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('logContent').textContent = data;
+                    // Scroll to bottom of logs
+                    const logContent = document.getElementById('logContent');
+                    logContent.scrollTop = logContent.scrollHeight;
+                })
+                .catch(error => {
+                    document.getElementById('logContent').textContent = 'Error loading logs: ' + error;
+                });
+        }
+        
+        function checkBotStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('botStatus');
+                    const refreshBtn = document.getElementById('refreshStatusBtn');
+                    
+                    if (data.status === 'running') {
+                        statusDiv.innerHTML = '<span style="color: #28a745; font-weight: bold;">✅ Bot is Running</span><br><small>' + data.details + '</small>';
+                        refreshBtn.style.display = 'inline-block';
+                    } else if (data.status === 'stopped') {
+                        statusDiv.innerHTML = '<span style="color: #dc3545; font-weight: bold;">❌ Bot is Stopped</span><br><small>' + data.details + '</small>';
+                        refreshBtn.style.display = 'inline-block';
+                    } else {
+                        statusDiv.innerHTML = '<span style="color: #ffc107; font-weight: bold;">⚠️ Bot Status Unknown</span><br><small>' + data.details + '</small>';
+                        refreshBtn.style.display = 'inline-block';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('botStatus').innerHTML = '<span style="color: #dc3545;">Error checking status: ' + error + '</span>';
+                });
+        }
+        
+        // Update behavior preview and check bot status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateBotBehavior();
+            checkBotStatus();
+        });
     </script>
 </body>
 </html>
@@ -332,20 +397,58 @@ def save():
 @requires_auth
 def restart():
     try:
-        subprocess.run(['docker', 'compose', 'restart'], check=True)
-        return jsonify({'message': 'Bot restarted successfully!'})
-    except subprocess.CalledProcessError:
-        return jsonify({'message': 'Failed to restart bot'}), 500
+        # Use hardcoded container name since we know it
+        bot_container = 'feedmaster-bluesky-bot-bluesky-bot-1'
+        
+        # Restart the bot container
+        restart_result = subprocess.run(['docker', 'restart', bot_container], 
+                                      capture_output=True, text=True)
+        if restart_result.returncode == 0:
+            return jsonify({'message': f'Bot container {bot_container} restarted successfully!'})
+        else:
+            error_msg = restart_result.stderr or restart_result.stdout or 'Unknown error'
+            return jsonify({'message': f'Failed to restart: {error_msg}'}), 500
+    except Exception as e:
+        return jsonify({'message': f'Failed to restart: {str(e)}'}), 500
 
 @app.route('/logs')
 @requires_auth
 def logs():
     try:
-        result = subprocess.run(['docker', 'compose', 'logs', '--tail=100', 'bluesky-bot'], 
+        # Use hardcoded container name since we know it
+        bot_container = 'feedmaster-bluesky-bot-bluesky-bot-1'
+        
+        # Get logs from the bot container (both stdout and stderr)
+        log_result = subprocess.run(['docker', 'logs', '--tail=100', bot_container], 
+                                  capture_output=True, text=True)
+        if log_result.returncode == 0:
+            # Combine stdout and stderr since bot logs might go to either
+            logs = (log_result.stdout + log_result.stderr).strip()
+            return logs if logs else 'No logs available'
+        else:
+            return f'Error getting logs: {log_result.stderr}'
+    except Exception as e:
+        return f'Failed to get logs: {str(e)}'
+
+@app.route('/status')
+@requires_auth
+def status():
+    try:
+        # Check if bot container is running
+        bot_container = 'feedmaster-bluesky-bot-bluesky-bot-1'
+        result = subprocess.run(['docker', 'ps', '--filter', f'name={bot_container}', '--format', '{{.Status}}'], 
                               capture_output=True, text=True)
-        return result.stdout
-    except:
-        return 'Failed to fetch logs'
+        
+        if result.returncode == 0 and result.stdout.strip():
+            status_text = result.stdout.strip()
+            if 'Up' in status_text:
+                return jsonify({'status': 'running', 'details': status_text})
+            else:
+                return jsonify({'status': 'stopped', 'details': status_text})
+        else:
+            return jsonify({'status': 'not_found', 'details': 'Container not found'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'details': str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
