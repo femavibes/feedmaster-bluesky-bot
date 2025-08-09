@@ -149,6 +149,8 @@ class FeedmasterBlueskyBot:
                 
                 achievements = data.get('achievements', [])
                 logger.info(f"Found {len(achievements)} recent achievements")
+                if achievements:
+                    logger.info(f"Sample achievement data: {achievements[0]}")
                 return achievements
                 
         except Exception as e:
@@ -314,10 +316,10 @@ class FeedmasterBlueskyBot:
             except:
                 continue
         
-        # CRITICAL FIX: If all fail, use default but make it MUCH bigger
-        logger.warning(f"All fonts failed, using default with size {size * 3}")
+        # If all fail, use default font with original size
+        logger.warning(f"All fonts failed, using default with size {size}")
         try:
-            return ImageFont.load_default(size * 3)
+            return ImageFont.load_default(size)
         except:
             return ImageFont.load_default()
     
@@ -328,13 +330,13 @@ class FeedmasterBlueskyBot:
                 response = await client.get(avatar_url, timeout=10)
                 response.raise_for_status()
                 avatar = Image.open(BytesIO(response.content)).convert('RGBA')
-                return avatar.resize((160, 160), Image.Resampling.LANCZOS)
+                return avatar.resize((200, 200), Image.Resampling.LANCZOS)
         except Exception as e:
             logger.warning(f"Failed to download avatar {avatar_url}: {e}")
             # Return default avatar
-            avatar = Image.new('RGBA', (160, 160), (64, 68, 75, 255))
+            avatar = Image.new('RGBA', (200, 200), (64, 68, 75, 255))
             draw = ImageDraw.Draw(avatar)
-            draw.ellipse([0, 0, 160, 160], fill=(100, 100, 100, 255))
+            draw.ellipse([0, 0, 200, 200], fill=(100, 100, 100, 255))
             return avatar
     
     async def generate_achievement_card(self, achievement: Dict) -> Optional[str]:
@@ -343,6 +345,7 @@ class FeedmasterBlueskyBot:
             user_name = achievement.get('user_display_name') or achievement.get('user_handle', 'Unknown')
             achievement_name = achievement.get('achievement_name', 'Unknown Achievement')
             rarity_tier = achievement.get('rarity_tier', 'Bronze')
+            # Get avatar URL from API response
             user_avatar_url = achievement.get('user_avatar_url', '')
             
             # Generate cache key
@@ -370,49 +373,51 @@ class FeedmasterBlueskyBot:
                 draw.line([(0, y), (width, y)], fill=(r, g, b))
             
             # Download and add user avatar if available
-            if user_avatar_url:
+            logger.info(f"Avatar URL: {user_avatar_url}")
+            if user_avatar_url and user_avatar_url.strip():
                 avatar = await self._download_avatar(user_avatar_url)
                 
-                # Make avatar circular
-                mask = Image.new('L', (160, 160), 0)
+                # Make avatar circular (larger size)
+                avatar_size = 200
+                mask = Image.new('L', (avatar_size, avatar_size), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse([0, 0, 160, 160], fill=255)
+                mask_draw.ellipse([0, 0, avatar_size, avatar_size], fill=255)
                 
                 # Create circular avatar
-                circular_avatar = Image.new('RGBA', (160, 160), (0, 0, 0, 0))
+                circular_avatar = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
                 circular_avatar.paste(avatar, (0, 0))
                 circular_avatar.putalpha(mask)
                 
                 # Add white border around avatar
-                border_size = 6
-                border_avatar = Image.new('RGBA', (160 + border_size * 2, 160 + border_size * 2), (255, 255, 255, 255))
-                border_mask = Image.new('L', (160 + border_size * 2, 160 + border_size * 2), 0)
+                border_size = 8
+                border_avatar = Image.new('RGBA', (avatar_size + border_size * 2, avatar_size + border_size * 2), (255, 255, 255, 255))
+                border_mask = Image.new('L', (avatar_size + border_size * 2, avatar_size + border_size * 2), 0)
                 border_draw = ImageDraw.Draw(border_mask)
-                border_draw.ellipse([0, 0, 160 + border_size * 2, 160 + border_size * 2], fill=255)
+                border_draw.ellipse([0, 0, avatar_size + border_size * 2, avatar_size + border_size * 2], fill=255)
                 border_avatar.putalpha(border_mask)
                 
-                # Paste bordered avatar
-                img.paste(border_avatar, (width // 2 - 86, height // 2 - 86), border_avatar)
-                img.paste(circular_avatar, (width // 2 - 80, height // 2 - 80), circular_avatar)
+                # Paste bordered avatar (centered)
+                img.paste(border_avatar, (width // 2 - (avatar_size + border_size * 2) // 2, height // 2 - (avatar_size + border_size * 2) // 2), border_avatar)
+                img.paste(circular_avatar, (width // 2 - avatar_size // 2, height // 2 - avatar_size // 2), circular_avatar)
             
-            # Add "feedmaster" text at top
-            title_font = self._get_font(36)
+            # Add achievement name at top
+            achievement_font = self._get_font(48)
+            achievement_bbox = draw.textbbox((0, 0), achievement_name, font=achievement_font)
+            achievement_width = achievement_bbox[2] - achievement_bbox[0]
+            draw.text((width // 2 - achievement_width // 2, 50), achievement_name, fill=(255, 255, 255), font=achievement_font)
+            
+            # Add user name below avatar
+            user_font = self._get_font(32)
+            user_bbox = draw.textbbox((0, 0), user_name, font=user_font)
+            user_width = user_bbox[2] - user_bbox[0]
+            draw.text((width // 2 - user_width // 2, height // 2 + 150), user_name, fill=(220, 221, 222), font=user_font)
+            
+            # Add "feedmaster" text at bottom
+            title_font = self._get_font(28)
             title_text = "feedmaster"
             title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
             title_width = title_bbox[2] - title_bbox[0]
-            draw.text((width // 2 - title_width // 2, 50), title_text, fill=(255, 255, 255), font=title_font)
-            
-            # Add achievement name
-            achievement_font = self._get_font(14)
-            achievement_bbox = draw.textbbox((0, 0), achievement_name, font=achievement_font)
-            achievement_width = achievement_bbox[2] - achievement_bbox[0]
-            draw.text((width // 2 - achievement_width // 2, height - 220), achievement_name, fill=(255, 255, 255), font=achievement_font)
-            
-            # Add user name
-            user_font = self._get_font(12)
-            user_bbox = draw.textbbox((0, 0), user_name, font=user_font)
-            user_width = user_bbox[2] - user_bbox[0]
-            draw.text((width // 2 - user_width // 2, height - 155), user_name, fill=(220, 221, 222), font=user_font)
+            draw.text((width // 2 - title_width // 2, height - 80), title_text, fill=(180, 180, 180), font=title_font)
             
             # Add rarity badge
             rarity_colors = {
@@ -426,19 +431,22 @@ class FeedmasterBlueskyBot:
             }
             rarity_color = rarity_colors.get(rarity_tier, (205, 127, 50))
             
-            rarity_font = self._get_font(10)
+            rarity_font = self._get_font(18)
             rarity_text = f"{rarity_tier} Achievement"
             rarity_bbox = draw.textbbox((0, 0), rarity_text, font=rarity_font)
             rarity_width = rarity_bbox[2] - rarity_bbox[0]
             rarity_height = rarity_bbox[3] - rarity_bbox[1]
             
-            # Draw rarity badge background
-            badge_padding = 6
+            # Draw rarity badge below achievement name
+            badge_padding = 12
             badge_x = width // 2 - rarity_width // 2 - badge_padding
-            badge_y = height - 50 - rarity_height - badge_padding
+            badge_y = 120
             draw.rounded_rectangle([badge_x, badge_y, badge_x + rarity_width + (badge_padding * 2), badge_y + rarity_height + (badge_padding * 2)], 
-                                 radius=8, fill=rarity_color)
-            draw.text((width // 2 - rarity_width // 2, height - 50 - rarity_height), rarity_text, fill=(0, 0, 0), font=rarity_font)
+                                 radius=12, fill=rarity_color)
+            # Center text properly within the badge
+            text_x = width // 2 - rarity_width // 2
+            text_y = badge_y + badge_padding
+            draw.text((text_x, text_y), rarity_text, fill=(0, 0, 0), font=rarity_font)
             
             # Save to cache
             img.save(cache_path, 'PNG', optimize=True)
@@ -479,14 +487,18 @@ class FeedmasterBlueskyBot:
                     
                     # Create external embed with achievement card
                     if share_url and share_url.startswith(('http://', 'https://')):
+                        # URL encode the share_url to handle spaces and special characters
+                        from urllib.parse import quote
+                        encoded_url = quote(share_url, safe=':/?#[]@!$&\'()*+,;=')
+                        
                         external = models.AppBskyEmbedExternal.External(
-                            uri=share_url,
+                            uri=encoded_url,
                             title=f"{achievement.get('achievement_name', 'Achievement Unlocked')}",
                             description=f"{achievement.get('user_display_name') or achievement.get('user_handle', 'User')} earned this {achievement.get('rarity_tier', 'Bronze')} achievement!",
                             thumb=image_blob
                         )
                         embed = models.AppBskyEmbedExternal.Main(external=external)
-                        logger.info(f"Created achievement card link card with URL: {share_url}")
+                        logger.info(f"Created achievement card link card with URL: {encoded_url}")
                     else:
                         # If no valid share URL, just post the image
                         embed = models.AppBskyEmbedImages.Main(
