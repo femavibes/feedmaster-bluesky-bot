@@ -51,6 +51,7 @@ def load_config():
         'BLUESKY_USERNAME': os.getenv('BLUESKY_USERNAME', ''),
         'BLUESKY_DID': os.getenv('BLUESKY_DID', ''),
         'BLUESKY_APP_PASSWORD': os.getenv('BLUESKY_APP_PASSWORD', ''),
+        'DISCORD_WEBHOOK_URL': os.getenv('DISCORD_WEBHOOK_URL', ''),
         'MIN_RARITY_TIER': os.getenv('MIN_RARITY_TIER', 'Bronze'),
         'POLL_INTERVAL_MINUTES': os.getenv('POLL_INTERVAL_MINUTES', '10'),
         'MAX_POSTS_PER_HOUR': os.getenv('MAX_POSTS_PER_HOUR', '30'),
@@ -115,7 +116,12 @@ CONFIG_TEMPLATE = """
         </div>
 
         <div class="section">
-            <h2>🦋 Bluesky Account</h2>
+            <h2>📱 Platform Configuration</h2>
+            <div class="alert" style="background: #e7f3ff; color: #0c5460; border: 1px solid #b8daff; margin-bottom: 15px;">
+                <strong>Note:</strong> Configure at least one platform (Bluesky or Discord). You can use both simultaneously.
+            </div>
+            
+            <h3>🦋 Bluesky Account (Optional)</h3>
             <div class="form-group">
                 <label for="BLUESKY_USERNAME">Bluesky Username:</label>
                 <input type="text" name="BLUESKY_USERNAME" value="{{ config.BLUESKY_USERNAME }}" placeholder="your-bot.bsky.social">
@@ -128,8 +134,15 @@ CONFIG_TEMPLATE = """
             </div>
             <div class="form-group">
                 <label for="BLUESKY_APP_PASSWORD">App Password:</label>
-                <input type="password" name="BLUESKY_APP_PASSWORD" value="{{ config.BLUESKY_APP_PASSWORD }}" required>
+                <input type="password" name="BLUESKY_APP_PASSWORD" value="{{ config.BLUESKY_APP_PASSWORD }}">
                 <div class="help">Generate this in Bluesky Settings > App Passwords</div>
+            </div>
+            
+            <h3>💬 Discord Webhook (Optional)</h3>
+            <div class="form-group">
+                <label for="DISCORD_WEBHOOK_URL">Discord Webhook URL:</label>
+                <input type="url" name="DISCORD_WEBHOOK_URL" value="{{ config.DISCORD_WEBHOOK_URL }}" placeholder="https://discord.com/api/webhooks/...">
+                <div class="help">Get this from Discord Server Settings > Integrations > Webhooks</div>
             </div>
         </div>
 
@@ -289,6 +302,7 @@ def save():
         'BLUESKY_USERNAME': request.form.get('BLUESKY_USERNAME', '').strip(),
         'BLUESKY_DID': request.form.get('BLUESKY_DID', '').strip(),
         'BLUESKY_APP_PASSWORD': request.form.get('BLUESKY_APP_PASSWORD', '').strip(),
+        'DISCORD_WEBHOOK_URL': request.form.get('DISCORD_WEBHOOK_URL', '').strip(),
         'MIN_RARITY_TIER': request.form.get('MIN_RARITY_TIER', 'Bronze'),
         'POLL_INTERVAL_MINUTES': request.form.get('POLL_INTERVAL_MINUTES', '10'),
         'MAX_POSTS_PER_HOUR': request.form.get('MAX_POSTS_PER_HOUR', '30'),
@@ -302,12 +316,12 @@ def save():
         flash('Feedmaster API URL and Feed IDs are required!')
         return redirect('/')
     
-    if not config['BLUESKY_USERNAME'] and not config['BLUESKY_DID']:
-        flash('Either Bluesky Username or DID is required!')
-        return redirect('/')
+    # Validate that at least one platform is configured
+    has_bluesky = (config['BLUESKY_USERNAME'] or config['BLUESKY_DID']) and config['BLUESKY_APP_PASSWORD']
+    has_discord = config['DISCORD_WEBHOOK_URL']
     
-    if not config['BLUESKY_APP_PASSWORD']:
-        flash('Bluesky App Password is required!')
+    if not has_bluesky and not has_discord:
+        flash('Configure at least one platform: Bluesky (username/DID + password) or Discord (webhook URL)!')
         return redirect('/')
     
     save_config(config)

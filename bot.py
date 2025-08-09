@@ -39,6 +39,7 @@ class FeedmasterBlueskyBot:
         self.bluesky_username = os.getenv('BLUESKY_USERNAME')
         self.bluesky_did = os.getenv('BLUESKY_DID')  # Optional DID fallback
         self.bluesky_app_password = os.getenv('BLUESKY_APP_PASSWORD')
+        self.discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')  # Optional Discord webhook
         self.min_rarity_tier = os.getenv('MIN_RARITY_TIER', 'Bronze')
         self.poll_interval_minutes = int(os.getenv('POLL_INTERVAL_MINUTES', '10'))
         self.max_posts_per_hour = int(os.getenv('MAX_POSTS_PER_HOUR', '30'))
@@ -58,8 +59,8 @@ class FeedmasterBlueskyBot:
         )
         
         # Validate configuration
-        if (not self.bluesky_username and not self.bluesky_did) or not self.bluesky_app_password:
-            raise ValueError("BLUESKY_USERNAME (or BLUESKY_DID) and BLUESKY_APP_PASSWORD are required")
+        if not self.discord_webhook_url and ((not self.bluesky_username and not self.bluesky_did) or not self.bluesky_app_password):
+            raise ValueError("Either DISCORD_WEBHOOK_URL or (BLUESKY_USERNAME/BLUESKY_DID + BLUESKY_APP_PASSWORD) is required")
         
         if not self.feed_ids or self.feed_ids == ['']:
             raise ValueError("FEED_IDS is required")
@@ -117,6 +118,9 @@ class FeedmasterBlueskyBot:
     
     async def authenticate_bluesky(self):
         """Authenticate with Bluesky"""
+        if not self.bluesky_username and not self.bluesky_did:
+            logger.info("No Bluesky credentials provided, skipping authentication")
+            return
         try:
             self.bluesky_client = Client()
             # Try username first, then DID as fallback
@@ -299,6 +303,63 @@ class FeedmasterBlueskyBot:
                     logger.error(f"All {max_retries} attempts failed for {url}")
         
         return None
+    
+    async def post_to_discord(self, message: str, achievement: Dict) -> bool:
+        """Post achievement to Discord webhook"""
+        if not self.discord_webhook_url:
+            return False
+            
+        try:
+            # Create Discord embed
+            embed = {
+                "title": f"🎉 {achievement.get('achievement_name', 'Achievement Unlocked')}",
+                "description": message,
+                "color": self._get_rarity_color(achievement.get('rarity_tier', 'Bronze')),
+                "thumbnail": {
+                    "url": achievement.get('user_avatar_url', '')
+                },
+                "fields": [
+                    {
+                        "name": "User",
+                        "value": f"@{achievement.get('user_handle', 'unknown')}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Rarity",
+                        "value": f"{achievement.get('rarity_tier', 'Bronze')} ({achievement.get('rarity_percentage', 0):.2f}%)",
+                        "inline": True
+                    }
+                ],
+                "url": achievement.get('share_url', '')
+            }
+            
+            payload = {
+                "embeds": [embed]
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(self.discord_webhook_url, json=payload)
+                response.raise_for_status()
+                
+            logger.info("Successfully posted to Discord")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to post to Discord: {e}")
+            return False
+    
+    def _get_rarity_color(self, rarity_tier: str) -> int:
+        """Get Discord embed color for rarity tier"""
+        colors = {
+            'Mythic': 0xFF00FF,     # Magenta
+            'Legendary': 0x9400D3,  # Dark Violet
+            'Diamond': 0xB9F2FF,    # Light Blue
+            'Platinum': 0xE5E4E2,   # Platinum
+            'Gold': 0xFFD700,       # Gold
+            'Silver': 0xC0C0C0,     # Silver
+            'Bronze': 0xCD7F32      # Bronze
+        }
+        return colors.get(rarity_tier, 0xCD7F32)
     
     def _get_font(self, size: int):
         """Get font with multiple fallbacks - FIXED VERSION"""
@@ -525,7 +586,7 @@ class FeedmasterBlueskyBot:
             
             self.posts_this_hour += 1
             
-            logger.info(f"Successfully posted to Bluesky ({self.posts_this_hour}/{self.max_posts_per_hour} this hour)")
+            logger.info(f"Successfully posted ({self.posts_this_hour}/{self.max_posts_per_hour} this hour)")
             return True
             
         except Exception as e:
@@ -554,12 +615,23 @@ class FeedmasterBlueskyBot:
             
             logger.info(f"Posting achievement: {achievement['user_handle']} - {achievement['achievement_name']} ({achievement.get('rarity_percentage', 0):.2f}% rarity)")
             
-            if await self.post_to_bluesky(message, achievement, share_url):
+            # Post to both platforms
+            bluesky_success = False
+            discord_success = False
+            
+            if self.bluesky_client:
+                bluesky_success = await self.post_to_bluesky(message, achievement, share_url)
+            
+            if self.discord_webhook_url:
+                discord_success = await self.post_to_discord(message, achievement)
+                
+            # Consider it successful if at least one platform worked
+            if bluesky_success or discord_success:
                 posted_count += 1
                 # Small delay between posts
                 await asyncio.sleep(2)
-            else:
-                # If we hit rate limit, stop processing
+            elif self.bluesky_client and not bluesky_success:
+                # If we hit Bluesky rate limit, stop processing
                 break
         
         # Update cursor to latest achievement ID (even if not posted)
@@ -574,10 +646,19 @@ class FeedmasterBlueskyBot:
     
     async def run(self):
         """Main bot loop"""
-        logger.info("Starting Feedmaster Bluesky Bot...")
+        logger.info("Starting Feedmaster Achievement Bot...")
         
-        # Authenticate with Bluesky
-        await self.authenticate_bluesky()
+        # Authenticate with Bluesky (if configured)
+        if self.bluesky_username or self.bluesky_did:
+            await self.authenticate_bluesky()
+        
+        # Log enabled platforms
+        platforms = []
+        if self.bluesky_client:
+            platforms.append("Bluesky")
+        if self.discord_webhook_url:
+            platforms.append("Discord")
+        logger.info(f"Enabled platforms: {', '.join(platforms)}")
         
         while True:
             try:
