@@ -10,9 +10,14 @@ Automatically posts achievement notifications to Bluesky when users earn achieve
    cd feedmaster-bluesky-bot
    ```
 
-2. **Start the bot:**
+2. **Start the bot (uses pre-built images):**
    ```bash
    docker compose up -d
+   ```
+   
+   **Or for development (builds locally):**
+   ```bash
+   docker compose -f docker-compose.dev.yml up -d
    ```
 
 3. **Configure via web interface:**

@@ -1,8 +1,11 @@
 version: '3.8'
 
+# Development version with local builds
+# Use: docker compose -f docker-compose.dev.yml up -d
+
 services:
   bluesky-bot:
-    image: ghcr.io/femavibes/feedmaster-bluesky-bot:latest
+    build: .
     restart: unless-stopped
     environment:
       # Feedmaster API
@@ -23,7 +26,7 @@ services:
       - ./logs:/app/logs
   
   config-server:
-    image: ghcr.io/femavibes/feedmaster-bluesky-bot:latest
+    build: .
     command: python config_server.py
     ports:
       - "8080:8080"
