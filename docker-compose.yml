@@ -21,3 +21,17 @@ services:
       MESSAGE_TEMPLATE: ${MESSAGE_TEMPLATE:-🎉 Congratulations @{username} on earning "{achievement}"! Only {percentage}% of users have achieved this {rarity} rarity! Track your achievements at feedmaster.fema.monster}
     volumes:
       - ./logs:/app/logs
+  
+  config-server:
+    build: .
+    command: python config_server.py
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./.env:/app/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CONFIG_USERNAME=${CONFIG_USERNAME:-admin}
+      - CONFIG_PASSWORD=${CONFIG_PASSWORD:-changeme}

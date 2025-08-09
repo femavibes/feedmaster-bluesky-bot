@@ -8,20 +8,44 @@ Automatically posts achievement notifications to Bluesky when users earn achieve
    ```bash
    git clone https://github.com/femavibes/feedmaster-bluesky-bot
    cd feedmaster-bluesky-bot
-   cp .env.example .env
    ```
 
-2. **Configure your bot:**
-   Edit `.env` with your settings:
-   - `FEED_IDS`: Comma-separated feed IDs to monitor (e.g., `3654,5511`)
-   - `BLUESKY_USERNAME`: Your bot account username
-   - `BLUESKY_APP_PASSWORD`: App password from Bluesky settings
-   - `MIN_RARITY_TIER`: Minimum rarity to post (Bronze/Silver/Gold/Platinum/Diamond/Legendary/Mythic)
-
-3. **Run the bot:**
+2. **Start the bot:**
    ```bash
    docker compose up -d
    ```
+
+3. **Configure via web interface:**
+   - **Local deployment**: Open http://localhost:8080
+   - **VPS deployment**: Open http://YOUR_VPS_IP:8080 (e.g., http://123.45.67.89:8080)
+   - **Default login**: Username: `admin`, Password: `changeme`
+   - Fill in your Feedmaster API URL and Feed IDs
+   - Add your Bluesky credentials
+   - Adjust bot settings as needed
+   - Click "Save Configuration" then "Restart Bot"
+
+## Configuration Methods
+
+### Option 1: Web Interface (Recommended)
+1. Copy `.env.example` to `.env`
+2. Change `CONFIG_USERNAME` and `CONFIG_PASSWORD` (required for security)
+3. Start containers: `docker compose up -d`
+4. Access configuration page:
+   - **Local**: http://localhost:8080
+   - **VPS**: http://YOUR_VPS_IP:8080
+5. Fill out all bot settings via web form
+6. Save & restart bot
+
+### Option 2: Manual Configuration
+1. Copy `.env.example` to `.env`
+2. Fill out **all** settings in the `.env` file
+3. Start containers: `docker compose up -d`
+4. Bot runs immediately with your settings
+
+### VPS Security Options
+1. **Change default password**: Set CONFIG_USERNAME and CONFIG_PASSWORD in .env
+2. **SSH Tunnel**: `ssh -L 8080:localhost:8080 user@your-vps` then use http://localhost:8080
+3. **Firewall**: Restrict port 8080 to your IP only
 
 ## Configuration Options
 
